@@ -24,11 +24,11 @@ const createFallbackSession = () => ({ id: null, update: noopAsync });
 let isDatabaseEnabled = true;
 
 const disableDatabase = (err, context = 'unknown') => {
-  const label = [DB:];
+  const label = `[DB:${context}]`;
   if (err) {
     console.error(label, err);
   } else {
-    console.warn(${label} Disabling database integration without error payload.);
+    console.warn(`${label} Disabling database integration without error payload.`);
   }
   if (isDatabaseEnabled) {
     isDatabaseEnabled = false;
