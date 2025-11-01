@@ -17,6 +17,11 @@ const User = require('./models/User');
 const Session = require('./models/Session');
 const Message = require('./models/Message');
 
+User.hasMany(Session);
+Session.belongsTo(User);
+Session.hasMany(Message);
+Message.belongsTo(Session);
+
 // Initialize DB connection
 sequelize
   .sync()
@@ -444,6 +449,12 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`🚀 WhatsApp Car Protection Chatbot running on port ${PORT}`);
-});
+
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log('WhatsApp Car Protection Chatbot running on port ' + PORT);
+  });
+}
+
+module.exports = app;
+
