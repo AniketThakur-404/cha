@@ -17,16 +17,43 @@ const User = require('./models/User');
 const Session = require('./models/Session');
 const Message = require('./models/Message');
 
+const noopAsync = async () => {};
+const createFallbackUser = () => ({ name: null, update: noopAsync });
+const createFallbackSession = () => ({ id: null, update: noopAsync });
+
+let isDatabaseEnabled = true;
+
+const disableDatabase = (err, context = 'unknown') => {
+  const label = [DB:];
+  if (err) {
+    console.error(label, err);
+  } else {
+    console.warn(${label} Disabling database integration without error payload.);
+  }
+  if (isDatabaseEnabled) {
+    isDatabaseEnabled = false;
+    console.warn('Database integration disabled; continuing without persistence.');
+  }
+};
+
+const databaseConfigured =
+  Boolean(process.env.DATABASE_URL) ||
+  Boolean(process.env.DB_HOST || process.env.DB_USER || process.env.DB_PASSWORD);
+
 User.hasMany(Session);
 Session.belongsTo(User);
 Session.hasMany(Message);
 Message.belongsTo(Session);
 
-// Initialize DB connection
-sequelize
-  .sync()
-  .then(() => console.log('✅ PostgreSQL connected & synced'))
-  .catch(err => console.error('❌ Database sync error:', err));
+if (!databaseConfigured && process.env.VERCEL) {
+  isDatabaseEnabled = false;
+  console.warn('Database configuration not detected on Vercel; persistence features disabled.');
+} else {
+  sequelize
+    .sync()
+    .then(() => console.log('? PostgreSQL connected & synced'))
+    .catch(err => disableDatabase(err, 'sync'));
+}
 
 // ====================================================
 // Middleware and basic setup
@@ -100,28 +127,38 @@ app.post('/webhook', async (req, res) => {
     // ====================================================
     // 🧠 DATABASE INTEGRATION START
     // ====================================================
-    let user = await User.findOne({ where: { phone_number: senderId } });
-    if (!user) {
-      user = await User.create({ phone_number: senderId });
-    }
+    let user = createFallbackUser();
+    let session = createFallbackSession();
 
-    let session = await Session.findOne({
-      where: { UserId: user.id },
-      order: [['updatedAt', 'DESC']],
-    });
-    if (!session) {
-      session = await Session.create({
-        UserId: user.id,
-        current_step: 'welcome',
-      });
-    }
+    if (isDatabaseEnabled) {
+      try {
+        user = await User.findOne({ where: { phone_number: senderId } });
+        if (!user) {
+          user = await User.create({ phone_number: senderId });
+        }
 
-    await Message.create({
-      SessionId: session.id,
-      sender: 'user',
-      message_text: messageText,
-    });
-    // ====================================================
+        session = await Session.findOne({
+          where: { UserId: user.id },
+          order: [['updatedAt', 'DESC']],
+        });
+        if (!session) {
+          session = await Session.create({
+            UserId: user.id,
+            current_step: 'welcome',
+          });
+        }
+
+        await Message.create({
+          SessionId: session.id,
+          sender: 'user',
+          message_text: messageText,
+        });
+      } catch (dbError) {
+        disableDatabase(dbError, 'persist-incoming');
+        user = createFallbackUser();
+        session = createFallbackSession();
+      }
+    }
 
     // Handle numeric reply fallback
     if (/^\d+$/.test(messageText.trim())) {
@@ -133,32 +170,52 @@ app.post('/webhook', async (req, res) => {
       }
     }
 
-    // 🤖 Process message with bot
+    // ?? Process message with bot
     const botResponse = bot.processMessage(senderId, messageText, user.name);
 
     // Save bot response in DB
-    await Message.create({
-      SessionId: session.id,
-      sender: 'bot',
-      message_text: botResponse.text,
-    });
+    if (isDatabaseEnabled && session.id) {
+      try {
+        await Message.create({
+          SessionId: session.id,
+          sender: 'bot',
+          message_text: botResponse.text,
+        });
+      } catch (dbError) {
+        disableDatabase(dbError, 'persist-bot-response');
+      }
+    }
 
     // Update session step & data
     const liveSession = bot.getSession(senderId);
-    
-    // If name was collected, save it to the user record
-    if (liveSession?.user_name && liveSession?.name_collected && !user.name) {
-      await user.update({ name: liveSession.user_name });
-      console.log(`✅ Saved user name: ${liveSession.user_name} for ${senderId}`);
-    }
-    
-    await session.update({
-      current_step: liveSession?.step || 'unknown',
-      selected_package: liveSession?.selected_package || null,
-      location: liveSession?.location || null,
-    });
 
-    // ====================================================
+    // If name was collected, save it to the user record
+    if (
+      isDatabaseEnabled &&
+      liveSession?.user_name &&
+      liveSession?.name_collected &&
+      !user.name
+    ) {
+      try {
+        await user.update({ name: liveSession.user_name });
+        console.log(? Saved user name:  for );
+      } catch (dbError) {
+        disableDatabase(dbError, 'update-user-name');
+      }
+    }
+
+    if (isDatabaseEnabled && session.id) {
+      try {
+        await session.update({
+          current_step: liveSession?.step || 'unknown',
+          selected_package: liveSession?.selected_package || null,
+          location: liveSession?.location || null,
+        });
+      } catch (dbError) {
+        disableDatabase(dbError, 'update-session');
+      }
+    }
+
     // 🧠 DATABASE INTEGRATION END
     // ====================================================
 
