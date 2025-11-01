@@ -51,7 +51,7 @@ if (!databaseConfigured && process.env.VERCEL) {
 } else {
   sequelize
     .sync()
-    .then(() => console.log('? PostgreSQL connected & synced'))
+    .then(() => console.log('[DB] PostgreSQL connected & synced'))
     .catch(err => disableDatabase(err, 'sync'));
 }
 
