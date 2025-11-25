@@ -1,32 +1,25 @@
 // db.js
 const { Sequelize } = require('sequelize');
 
-const {
-  DATABASE_URL,
-  DB_NAME = 'whatsapp_bot_db',
-  DB_USER = 'postgres',
-  DB_PASSWORD = 'Ayush@123',
-  DB_HOST = '127.0.0.1',
-  DB_PORT = '5432',
-  DB_DIALECT = 'postgres',
-  DB_SSL,
-} = process.env;
-
-let sequelize;
-
-if (DATABASE_URL) {
-  sequelize = new Sequelize(DATABASE_URL, {
-    dialect: 'postgres',
-    logging: false,
-    dialectOptions: DB_SSL === 'true' ? { ssl: { require: true, rejectUnauthorized: false } } : {},
-  });
-} else {
-  sequelize = new Sequelize(DB_NAME, DB_USER, DB_PASSWORD, {
-    host: DB_HOST,
-    port: DB_PORT,
-    dialect: DB_DIALECT,
-    logging: false,
-  });
-}
+const sequelize = new Sequelize('auto_ayushdb', 'auto_ayushuser', 'ayush@123', {
+  host: '31.97.235.133',
+  port: 3306,
+  dialect: 'mysql',
+  logging: false, // optional
+  pool: {
+    max: 5,
+    min: 0,
+    acquire: 30000,
+    idle: 10000
+  },
+  dialectOptions: {
+    connectTimeout: 30000,
+    charset: 'utf8mb4'
+  },
+  define: {
+    charset: 'utf8mb4',
+    collate: 'utf8mb4_unicode_ci'
+  }
+});
 
 module.exports = sequelize;
